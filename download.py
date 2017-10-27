@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 import json
 import os
 import urllib.parse
@@ -13,8 +14,9 @@ DISTRICTS_FILENAME = "districts.json"
 PROVIDERS_FILENAME_PATTERN = "providers-{}.json"
 STATS_FILENAME_PATTERN = "stats-{}-{}.json"
 RANKING_PROPERTIES_FILENAME_PATTERN = "ranking-properties-{}.json"
+CSV_FILENAME = "summary.csv"
 
-RANKING_PROPERTIES = [
+RANKING_PROPERTIES_URL = [
     "wirelineproviderequals0",
     "wirelineprovidergreaterthan1",
     "wirelineprovidergreaterthan2",
@@ -24,6 +26,17 @@ RANKING_PROPERTIES = [
     "wirelineprovidergreaterthan6",
     "wirelineprovidergreaterthan7",
     "wirelineprovidergreaterthan8"
+]
+RANKING_PROPERTIES_JSON = [
+    "wirelineProviderEquals0",
+    "wirelineProviderGreaterThan1",
+    "wirelineProviderGreaterThan2",
+    "wirelineProviderGreaterThan3",
+    "wirelineProviderGreaterThan4",
+    "wirelineProviderGreaterThan5",
+    "wirelineProviderGreaterThan6",
+    "wirelineProviderGreaterThan7",
+    "wirelineProviderGreaterThan8"
 ]
 
 
@@ -88,6 +101,7 @@ def download_provider_stats(dataVersion, state_id, district_id, provider_id,
 
 def download_ranking_properties(dataVersion, data_version_dir, state_id,
                                 district_id, state_abbreviation_lookup):
+    properties = ",".join(RANKING_PROPERTIES_URL)
     url = urllib.parse.urljoin(API_BASE, "almanac/{}/rankby/state/{}/"
                                          "population/"
                                          "wirelineprovidergreaterthan1/"
@@ -95,8 +109,7 @@ def download_ranking_properties(dataVersion, data_version_dir, state_id,
                                          "?format=json&order=asc"
                                          "&properties={}"
                                          .format(dataVersion, state_id,
-                                                 district_id,
-                                                 ",".join(RANKING_PROPERTIES)))
+                                                 district_id, properties))
     resp = requests.get(url)
     response_object = resp.json()
     if response_object.get("status") == "OK":
@@ -118,6 +131,34 @@ def download_ranking_properties(dataVersion, data_version_dir, state_id,
     else:
         raise Exception("Downloading provider statistics failed: {}"
                         .format(response_object.get("message")))
+
+
+def district_sort_key(district):
+    return district["stateAbbreviation"], district["geographyName"]
+
+
+def generate_csv(data_version_dir):
+    with open(os.path.join(data_version_dir, CSV_FILENAME), "w") as csv_file:
+        fieldnames = ["District"] + RANKING_PROPERTIES_JSON
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+
+        districts_path = os.path.join(data_version_dir, DISTRICTS_FILENAME)
+        districts = parse_districts(districts_path)
+        for district in sorted(districts, key=district_sort_key):
+            state_abbr = district["stateAbbreviation"]
+            district_number = district["geographyName"]
+            district_name = "{}-{}".format(state_abbr, district_number)
+            ranking_properties_path = os.path.join(
+                data_version_dir,
+                RANKING_PROPERTIES_FILENAME_PATTERN.format(district_name)
+            )
+            with open(ranking_properties_path) as json_file:
+                properties = json.load(json_file)
+                row_dict = {field: properties[field]
+                            for field in RANKING_PROPERTIES_JSON}
+                row_dict["District"] = district_name
+                writer.writerow(row_dict)
 
 
 def main():
@@ -184,6 +225,8 @@ def main():
             if not os.path.isfile(ranking_properties_path):
                 raise Exception("Failed to download ranking properties for {}"
                                 .format(district_name))
+
+    generate_csv(data_version_dir)
 
 
 if __name__ == "__main__":
