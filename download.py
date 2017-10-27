@@ -76,6 +76,7 @@ def download_provider_stats(dataVersion, state_id, district_id, provider_id,
 def main():
     parser = argparse.ArgumentParser(description="Download broadband map data")
     parser.add_argument("--dataVersion", metavar="monYEAR", default="jun2014")
+    parser.add_argument("--providerStatistics", action="store_true")
     args = parser.parse_args()
 
     if not os.path.isdir(DATA_DIR):
@@ -104,17 +105,19 @@ def main():
             download_provider_list(args.dataVersion, state_id, district_id,
                                    providers_path)
 
-        providers = parse_providers_list(providers_path)
-        for provider in providers:
-            provider_id = provider["holdingCompanyNumber"]
+        if args.providerStatistics:
+            providers = parse_providers_list(providers_path)
+            for provider in providers:
+                provider_id = provider["holdingCompanyNumber"]
 
-            stats_path = os.path.join(data_version_dir,
-                                      STATS_FILENAME_PATTERN
-                                      .format(district_name, provider_id))
+                stats_path = os.path.join(data_version_dir,
+                                          STATS_FILENAME_PATTERN
+                                          .format(district_name, provider_id))
 
-            if not os.path.isfile(stats_path):
-                download_provider_stats(args.dataVersion, state_id,
-                                        district_id, provider_id, stats_path)
+                if not os.path.isfile(stats_path):
+                    download_provider_stats(args.dataVersion, state_id,
+                                            district_id, provider_id,
+                                            stats_path)
 
 
 if __name__ == "__main__":
