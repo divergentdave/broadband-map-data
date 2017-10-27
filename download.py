@@ -12,6 +12,19 @@ DATA_DIR = "data"
 DISTRICTS_FILENAME = "districts.json"
 PROVIDERS_FILENAME_PATTERN = "providers-{}.json"
 STATS_FILENAME_PATTERN = "stats-{}-{}.json"
+RANKING_PROPERTIES_FILENAME_PATTERN = "ranking-properties-{}.json"
+
+RANKING_PROPERTIES = [
+    "wirelineproviderequals0",
+    "wirelineprovidergreaterthan1",
+    "wirelineprovidergreaterthan2",
+    "wirelineprovidergreaterthan3",
+    "wirelineprovidergreaterthan4",
+    "wirelineprovidergreaterthan5",
+    "wirelineprovidergreaterthan6",
+    "wirelineprovidergreaterthan7",
+    "wirelineprovidergreaterthan8"
+]
 
 
 def download_districts(file_path):
@@ -73,6 +86,40 @@ def download_provider_stats(dataVersion, state_id, district_id, provider_id,
                         .format(response_object.get("message")))
 
 
+def download_ranking_properties(dataVersion, data_version_dir, state_id,
+                                district_id, state_abbreviation_lookup):
+    url = urllib.parse.urljoin(API_BASE, "almanac/{}/rankby/state/{}/"
+                                         "population/"
+                                         "wirelineprovidergreaterthan1/"
+                                         "congdistrict/id/{}"
+                                         "?format=json&order=asc"
+                                         "&properties={}"
+                                         .format(dataVersion, state_id,
+                                                 district_id,
+                                                 ",".join(RANKING_PROPERTIES)))
+    resp = requests.get(url)
+    response_object = resp.json()
+    if response_object.get("status") == "OK":
+        results = response_object["Results"]
+        for result_list in (results["FirstTen"], results["myArea"],
+                            results["LastTen"], results["All"]):
+            for district in result_list:
+                district_number = district["geographyName"]
+                state_id = district["stateFips"]
+                state_abbr = state_abbreviation_lookup[state_id]
+                district_name = "{}-{}".format(state_abbr, district_number)
+                ranking_properties_path = os.path.join(
+                    data_version_dir,
+                    RANKING_PROPERTIES_FILENAME_PATTERN.format(district_name)
+                )
+                if not os.path.isfile(ranking_properties_path):
+                    with open(ranking_properties_path, "w") as f:
+                        json.dump(district, f)
+    else:
+        raise Exception("Downloading provider statistics failed: {}"
+                        .format(response_object.get("message")))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Download broadband map data")
     parser.add_argument("--dataVersion", metavar="monYEAR", default="jun2014")
@@ -90,6 +137,13 @@ def main():
         download_districts(districts_path)
 
     districts = parse_districts(districts_path)
+
+    state_abbreviation_lookup = {}
+    for district in districts:
+        state_id = district["stateFips"]
+        state_abbr = district["stateAbbreviation"]
+        state_abbreviation_lookup[state_id] = state_abbr
+
     for district in districts:
         state_id = district["stateFips"]
         district_id = district["geographyId"]
@@ -118,6 +172,18 @@ def main():
                     download_provider_stats(args.dataVersion, state_id,
                                             district_id, provider_id,
                                             stats_path)
+
+        ranking_properties_path = os.path.join(
+            data_version_dir,
+            RANKING_PROPERTIES_FILENAME_PATTERN.format(district_name)
+        )
+        if not os.path.isfile(ranking_properties_path):
+            download_ranking_properties(args.dataVersion, data_version_dir,
+                                        state_id, district_id,
+                                        state_abbreviation_lookup)
+            if not os.path.isfile(ranking_properties_path):
+                raise Exception("Failed to download ranking properties for {}"
+                                .format(district_name))
 
 
 if __name__ == "__main__":
