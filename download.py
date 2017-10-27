@@ -11,6 +11,7 @@ API_BASE = "https://www.broadbandmap.gov/broadbandmap/"
 DATA_DIR = "data"
 DISTRICTS_FILENAME = "districts.json"
 PROVIDERS_FILENAME_PATTERN = "providers-{}.json"
+STATS_FILENAME_PATTERN = "stats-{}-{}.json"
 
 
 def download_districts(file_path):
@@ -45,13 +46,31 @@ def download_provider_list(dataVersion, state_id, district_id, file_path):
         with open(file_path, "w") as f:
             json.dump(results, f)
     else:
-        raise Exception("Downloading provider statistics failed: {}"
+        raise Exception("Downloading provider list failed: {}"
                         .format(response_object.get("message")))
 
 
 def parse_providers_list(file_path):
     with open(file_path) as f:
         return json.load(f)["allProviders"]
+
+
+def download_provider_stats(dataVersion, state_id, district_id, provider_id,
+                            file_path):
+    url = urllib.parse.urljoin(API_BASE, "provider/{}/stats/state/{}/"
+                                         "population/congdistrict/{}/{}"
+                                         "?format=json"
+                                         .format(dataVersion, state_id,
+                                                 district_id, provider_id))
+    resp = requests.get(url)
+    response_object = resp.json()
+    if response_object.get("status") == "OK":
+        results = response_object["Results"]
+        with open(file_path, "w") as f:
+            json.dump(results, f)
+    else:
+        raise Exception("Downloading provider statistics failed: {}"
+                        .format(response_object.get("message")))
 
 
 def main():
@@ -84,6 +103,18 @@ def main():
         if not os.path.isfile(providers_path):
             download_provider_list(args.dataVersion, state_id, district_id,
                                    providers_path)
+
+        providers = parse_providers_list(providers_path)
+        for provider in providers:
+            provider_id = provider["holdingCompanyNumber"]
+
+            stats_path = os.path.join(data_version_dir,
+                                      STATS_FILENAME_PATTERN
+                                      .format(district_name, provider_id))
+
+            if not os.path.isfile(stats_path):
+                download_provider_stats(args.dataVersion, state_id,
+                                        district_id, provider_id, stats_path)
 
 
 if __name__ == "__main__":
